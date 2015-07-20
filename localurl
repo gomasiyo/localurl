@@ -1,0 +1,169 @@
+#!/usr/bin/env php
+<?php
+
+class localURL
+{
+
+    private $hostsFile = '/etc/hosts';
+    private $hostsData;
+    private $userPrefix;
+    private $userData;
+    private $userSuffix;
+
+    public function __construct()
+    {
+
+        $user = false;
+
+        $fp = fopen($this->hostsFile, 'r') or exit('File Open Error');
+        while($line = fgets($fp)) {
+
+            if(!$user) {
+                if(preg_match('/^#\[LXC\sDOMAIN\]$/', $line)) {
+                    $user = true;
+                    $this->userPrefix = $line;
+                } else {
+                    $this->hostsData .= $line;
+                }
+            } else {
+                if(preg_match('/^#\[LXC\sDOMAINEND\]$/', $line)) {
+                    $user = false;
+                    $this->userSuffix = $line;
+                } else {
+                    $this->userData .= $line;
+                }
+            }
+
+        }
+
+    }
+
+    public function lists()
+    {
+        foreach($this->sortIP($this->userList()) as $key => $val) {
+            printf("Domain: %s \t\t IP: %s%s", $val['domain'], $val['ip'], PHP_EOL);
+        }
+    }
+
+    public function add($domain = null, $ip = null)
+    {
+        if(isset($ip) && isset($domain)) {
+
+            if(!preg_match('/^(?:25[0-5]?|2[0-4][0-9]?|1[0-9]{2}|[1-9][0-9]?|0)(?:.(?:25[0-5]?|2[0-4][0-9]?|1[0-9]{2}|[1-9][0-9]?|0)){3}$/', $ip)) exit('IP format is different');
+
+            $list = array(
+                array(
+                    'ip' => $ip,
+                    'domain' => $domain
+                )
+            );
+
+           $list = array_merge($this->userList(), $list);
+
+            $this->writeHosts($this->sortIP($list));
+
+            printf('Sccess of Add of \'Domain: %s, IP: %s\'%s', $domain, $ip, PHP_EOL);
+
+        } else {
+            exit('IP or domain is not enough');
+        }
+    }
+
+    public function del($domain = null)
+    {
+        if(isset($domain)) {
+
+            $delHosts = false;
+            $userData = $this->userList();
+
+            foreach($userData as $key => $val) {
+                if($val['domain'] == $domain) {
+                    $delHosts = true;
+                    unset($userData[$key]);
+                }
+            }
+
+            if($delHosts) {
+                $this->writeHosts($userData);
+                printf('Success of Delete on \'%s\'%s', $domain, PHP_EOL);
+            } else {
+                printf('Failed of Delete on \'%s\'%s', $domain, PHP_EOL);
+            }
+
+        } else {
+            exit('Domain is not enough');
+        }
+    }
+
+    private function userList()
+    {
+
+        preg_match_all(
+            '/((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))\s(.*\.local)/',
+            $this->userData,
+            $match
+        );
+
+        $list = array();
+        foreach($match[1] as $key => $val) {
+            $list[$key]['ip'] = $val;
+        }
+        foreach($match[2] as $key => $val) {
+            $list[$key]['domain'] = $val;
+        }
+
+        return $list;
+
+    }
+
+    private function sortIP($data = array())
+    {
+
+        foreach($data as $key => $row) {
+            $ip[$key] = $row['ip'];
+        }
+
+        array_multisort($ip, SORT_ASC, $data);
+
+        return $data;
+
+    }
+
+    private function writeHosts($data = array())
+    {
+
+        $userData = null;
+
+        foreach($data as $key) {
+            $userData .= sprintf('%s %s%s', $key['ip'], $key['domain'], PHP_EOL);
+        }
+
+        $fp = fopen($this->hostsFile, 'w') or exit('Fire Open Error');
+        if(!fwrite($fp, sprintf('%s%s%s%s', $this->hostsData, $this->userPrefix, $userData, $this->userSuffix))) exit('Fire Write Error');
+
+    }
+
+}
+
+$localurl = new localURL();
+
+$argv = array_merge($argv, array(
+    null,
+    null,
+));
+
+switch($argv[1]) {
+    case 'list':
+        $localurl->lists();
+        break;
+    case 'add':
+        $localurl->add($argv[2],$argv[3]);
+        break;
+    case 'del':
+        $localurl->del($argv[2]);
+        break;
+    default:
+        echo 'not Argument';
+}
+
+
