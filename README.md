@@ -1,0 +1,2 @@
+# localurl
+HOSTS編集
